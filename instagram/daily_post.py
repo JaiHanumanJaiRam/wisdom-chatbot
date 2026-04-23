@@ -22,14 +22,16 @@ openai_client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
 INSTAGRAM_ACCESS_TOKEN = os.getenv("INSTAGRAM_ACCESS_TOKEN")
 INSTAGRAM_ACCOUNT_ID = os.getenv("INSTAGRAM_ACCOUNT_ID")
-IMAGE_HOST_URL = os.getenv("IMAGE_HOST_URL")
+CLOUDINARY_CLOUD_NAME = os.getenv("CLOUDINARY_CLOUD_NAME")
+CLOUDINARY_API_KEY = os.getenv("CLOUDINARY_API_KEY")
+CLOUDINARY_API_SECRET = os.getenv("CLOUDINARY_API_SECRET")
 
 TWITTER_API_KEY = os.getenv("TWITTER_API_KEY")
 TWITTER_API_SECRET = os.getenv("TWITTER_API_SECRET")
 TWITTER_ACCESS_TOKEN = os.getenv("TWITTER_ACCESS_TOKEN")
 TWITTER_ACCESS_SECRET = os.getenv("TWITTER_ACCESS_SECRET")
 
-OUTPUT_DIR = Path("./output")
+OUTPUT_DIR = Path(__file__).parent / "output"
 OUTPUT_DIR.mkdir(exist_ok=True)
 
 
@@ -141,14 +143,48 @@ def compose_image(quote_data: dict, bg_bytes: bytes) -> Path:
     return image_path
 
 
-# ── 4. Post to Instagram ──────────────────────────────────────────────────────
+# ── 4. Upload image to Cloudinary ────────────────────────────────────────────
+
+def upload_to_cloudinary(image_path: Path) -> str:
+    import cloudinary
+    import cloudinary.uploader
+    cloudinary.config(
+        cloud_name=CLOUDINARY_CLOUD_NAME,
+        api_key=CLOUDINARY_API_KEY,
+        api_secret=CLOUDINARY_API_SECRET,
+    )
+    result = cloudinary.uploader.upload(
+        str(image_path),
+        folder="wisdom_daily",
+        overwrite=True,
+    )
+    url = result["secure_url"]
+    print(f"Image uploaded to Cloudinary: {url}")
+    return url
+
+
+# ── 5. Post to Instagram ──────────────────────────────────────────────────────
+
+def get_page_token() -> str:
+    """Exchange user token for the page access token required by Instagram publishing API."""
+    r = requests.get(
+        f"https://graph.facebook.com/v19.0/me/accounts",
+        params={"access_token": INSTAGRAM_ACCESS_TOKEN},
+    )
+    r.raise_for_status()
+    pages = r.json().get("data", [])
+    if not pages:
+        raise ValueError("No Facebook Pages found. Make sure your Instagram is connected to a Facebook Page.")
+    return pages[0]["access_token"]
+
 
 def post_to_instagram(image_path: Path, quote_data: dict) -> str:
     if not INSTAGRAM_ACCESS_TOKEN or not INSTAGRAM_ACCOUNT_ID:
         print("Instagram credentials not set, skipping.")
         return ""
 
-    image_url = f"{IMAGE_HOST_URL}/{image_path.name}"
+    page_token = get_page_token()
+    image_url = upload_to_cloudinary(image_path)
     caption = (
         f'"{quote_data["quote"]}"\n\n'
         f"— {quote_data['source']}\n\n"
@@ -159,13 +195,15 @@ def post_to_instagram(image_path: Path, quote_data: dict) -> str:
 
     container_res = requests.post(
         f"https://graph.facebook.com/v19.0/{INSTAGRAM_ACCOUNT_ID}/media",
-        data={"image_url": image_url, "caption": caption, "access_token": INSTAGRAM_ACCESS_TOKEN},
+        data={"image_url": image_url, "caption": caption, "access_token": page_token},
     )
+    if not container_res.ok:
+        print("Instagram API error:", container_res.json())
     container_res.raise_for_status()
 
     publish_res = requests.post(
         f"https://graph.facebook.com/v19.0/{INSTAGRAM_ACCOUNT_ID}/media_publish",
-        data={"creation_id": container_res.json()["id"], "access_token": INSTAGRAM_ACCESS_TOKEN},
+        data={"creation_id": container_res.json()["id"], "access_token": page_token},
     )
     publish_res.raise_for_status()
     post_id = publish_res.json()["id"]
@@ -173,7 +211,7 @@ def post_to_instagram(image_path: Path, quote_data: dict) -> str:
     return post_id
 
 
-# ── 5. Post to Twitter/X ──────────────────────────────────────────────────────
+# ── 6. Post to Twitter/X ──────────────────────────────────────────────────────
 
 def post_to_twitter(image_path: Path, quote_data: dict) -> str:
     if not all([TWITTER_API_KEY, TWITTER_API_SECRET, TWITTER_ACCESS_TOKEN, TWITTER_ACCESS_SECRET]):
@@ -227,7 +265,10 @@ def run():
     image_path = compose_image(quote_data, bg_bytes)
 
     post_to_instagram(image_path, quote_data)
-    post_to_twitter(image_path, quote_data)
+    try:
+        post_to_twitter(image_path, quote_data)
+    except Exception as e:
+        print(f"Twitter skipped: {e}")
 
     print("\nDone.")
 
