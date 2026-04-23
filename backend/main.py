@@ -1,20 +1,20 @@
 import os
+import requests
 from pathlib import Path
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from pinecone import Pinecone
-from sentence_transformers import SentenceTransformer
 import anthropic
 
 load_dotenv(Path(__file__).parent / ".env", override=True)
 
 INDEX_NAME = "wisdom-books"
-EMBED_MODEL = "all-MiniLM-L6-v2"
+EMBED_MODEL = "jina-embeddings-v2-base-en"
 TOP_K = 6
 
-embedder = SentenceTransformer(EMBED_MODEL)
+JINA_API_KEY = os.getenv("JINA_API_KEY")
 pc = Pinecone(api_key=os.getenv("PINECONE_API_KEY"))
 index = pc.Index(INDEX_NAME)
 anthropic_client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
@@ -47,14 +47,19 @@ class ChatResponse(BaseModel):
     sources: list[str]
 
 
-def retrieve(question: str) -> tuple[str, list[str]]:
-    embedding = embedder.encode([question])[0].tolist()
-    results = index.query(
-        vector=embedding,
-        top_k=TOP_K,
-        include_metadata=True,
+def embed(text: str) -> list[float]:
+    response = requests.post(
+        "https://api.jina.ai/v1/embeddings",
+        headers={"Authorization": f"Bearer {JINA_API_KEY}", "Content-Type": "application/json"},
+        json={"model": EMBED_MODEL, "input": [text]},
     )
-    matches = results["matches"]
+    response.raise_for_status()
+    return response.json()["data"][0]["embedding"]
+
+
+def retrieve(question: str) -> tuple[str, list[str]]:
+    embedding = embed(question)
+    matches = index.query(vector=embedding, top_k=TOP_K, include_metadata=True)["matches"]
     sources = list({m["metadata"]["source"] for m in matches})
     context = "\n\n---\n\n".join(
         f"[{m['metadata']['source']}]\n{m['metadata']['text']}"
