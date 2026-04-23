@@ -1,5 +1,5 @@
 """
-Run once (or re-run when books change) to populate ChromaDB.
+Run once (or re-run when books change) to populate Pinecone.
 Usage: python ingest.py
 """
 
@@ -7,23 +7,26 @@ import os
 import sys
 from pathlib import Path
 from dotenv import load_dotenv
-import chromadb
+from pinecone import Pinecone
 from sentence_transformers import SentenceTransformer
 from pypdf import PdfReader
 
 load_dotenv(Path(__file__).parent / ".env", override=True)
 
-BOOKS_DIR = Path(os.getenv("BOOKS_DIR", "../books"))
-CHROMA_DIR = Path("./chroma_db")
-COLLECTION_NAME = "wisdom_books"
+BOOKS_DIR = Path(os.getenv("BOOKS_DIR", str(Path(__file__).parent.parent / "books")))
+INDEX_NAME = "wisdom-books"
 CHUNK_SIZE = 800
 CHUNK_OVERLAP = 100
 EMBED_MODEL = "all-MiniLM-L6-v2"
 EMBED_BATCH = 64
+UPSERT_BATCH = 100
 
 print(f"Loading embedding model: {EMBED_MODEL} ...")
 embedder = SentenceTransformer(EMBED_MODEL)
 print("Model loaded.")
+
+pc = Pinecone(api_key=os.getenv("PINECONE_API_KEY"))
+index = pc.Index(INDEX_NAME)
 
 
 def extract_text(pdf_path: Path) -> str:
@@ -60,16 +63,6 @@ def ingest():
     for f in pdf_files:
         print(f"  {f.name}")
 
-    chroma = chromadb.PersistentClient(path=str(CHROMA_DIR))
-    try:
-        chroma.delete_collection(COLLECTION_NAME)
-    except Exception:
-        pass
-    collection = chroma.create_collection(
-        name=COLLECTION_NAME,
-        metadata={"hnsw:space": "cosine"},
-    )
-
     total_chunks = 0
     for pdf_path in pdf_files:
         source = pdf_path.stem
@@ -83,22 +76,30 @@ def ingest():
         print(f"  {len(chunks)} chunks")
 
         for i in range(0, len(chunks), EMBED_BATCH):
-            batch = chunks[i : i + EMBED_BATCH]
+            batch = chunks[i: i + EMBED_BATCH]
             texts = [c["text"] for c in batch]
             embeddings = embedder.encode(texts, show_progress_bar=False).tolist()
 
-            collection.add(
-                ids=[c["id"] for c in batch],
-                documents=texts,
-                embeddings=embeddings,
-                metadatas=[{"source": c["source"]} for c in batch],
-            )
-            print(f"  Embedded chunks {i}–{i + len(batch) - 1}", end="\r")
+            vectors = [
+                {
+                    "id": c["id"],
+                    "values": emb,
+                    "metadata": {"source": c["source"], "text": c["text"]},
+                }
+                for c, emb in zip(batch, embeddings)
+            ]
+
+            # Upsert in Pinecone batches
+            for j in range(0, len(vectors), UPSERT_BATCH):
+                index.upsert(vectors=vectors[j: j + UPSERT_BATCH])
+
+            print(f"  Upserted chunks {i}–{i + len(batch) - 1}", end="\r")
 
         total_chunks += len(chunks)
         print(f"  Done — {len(chunks)} chunks stored.        ")
 
-    print(f"\nIngestion complete. Total chunks in DB: {total_chunks}")
+    stats = index.describe_index_stats()
+    print(f"\nIngestion complete. Total vectors in Pinecone: {stats['total_vector_count']}")
 
 
 if __name__ == "__main__":

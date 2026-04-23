@@ -4,29 +4,27 @@ from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-import chromadb
+from pinecone import Pinecone
 from sentence_transformers import SentenceTransformer
 import anthropic
 
 load_dotenv(Path(__file__).parent / ".env", override=True)
 
-CHROMA_DIR = "./chroma_db"
-COLLECTION_NAME = "wisdom_books"
+INDEX_NAME = "wisdom-books"
 EMBED_MODEL = "all-MiniLM-L6-v2"
 TOP_K = 6
 
 embedder = SentenceTransformer(EMBED_MODEL)
+pc = Pinecone(api_key=os.getenv("PINECONE_API_KEY"))
+index = pc.Index(INDEX_NAME)
 anthropic_client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
-
-chroma = chromadb.PersistentClient(path=CHROMA_DIR)
-collection = chroma.get_collection(COLLECTION_NAME)
 
 app = FastAPI()
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["https://suneelkaw.com", "https://www.suneelkaw.com", "http://localhost:5173"],
-    allow_methods=["POST"],
+    allow_origins=["https://suneelkaw.com", "https://www.suneelkaw.com", "http://localhost:5173", "http://localhost:5200"],
+    allow_methods=["POST", "GET"],
     allow_headers=["Content-Type"],
 )
 
@@ -51,16 +49,16 @@ class ChatResponse(BaseModel):
 
 def retrieve(question: str) -> tuple[str, list[str]]:
     embedding = embedder.encode([question])[0].tolist()
-    results = collection.query(
-        query_embeddings=[embedding],
-        n_results=TOP_K,
-        include=["documents", "metadatas"],
+    results = index.query(
+        vector=embedding,
+        top_k=TOP_K,
+        include_metadata=True,
     )
-    docs = results["documents"][0]
-    sources = list({m["source"] for m in results["metadatas"][0]})
+    matches = results["matches"]
+    sources = list({m["metadata"]["source"] for m in matches})
     context = "\n\n---\n\n".join(
-        f"[{results['metadatas'][0][i]['source']}]\n{doc}"
-        for i, doc in enumerate(docs)
+        f"[{m['metadata']['source']}]\n{m['metadata']['text']}"
+        for m in matches
     )
     return context, sources
 
@@ -96,4 +94,5 @@ async def chat(req: ChatRequest):
 
 @app.get("/health")
 async def health():
-    return {"status": "ok", "chunks": collection.count()}
+    stats = index.describe_index_stats()
+    return {"status": "ok", "vectors": stats["total_vector_count"]}
