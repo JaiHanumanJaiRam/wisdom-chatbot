@@ -143,9 +143,34 @@ def compose_image(quote_data: dict, bg_bytes: bytes) -> Path:
     return image_path
 
 
-# ── 4. Upload image to Cloudinary ────────────────────────────────────────────
+# ── 4. Combine image + audio into video ──────────────────────────────────────
 
-def upload_to_cloudinary(image_path: Path) -> str:
+def create_reel_video(image_path: Path, audio_path: Path) -> Path:
+    import subprocess
+    video_path = OUTPUT_DIR / f"reel_{date.today()}.mp4"
+    cmd = [
+        "ffmpeg", "-y",
+        "-loop", "1", "-i", str(image_path),
+        "-i", str(audio_path),
+        "-c:v", "libx264",
+        "-tune", "stillimage",
+        "-c:a", "aac",
+        "-b:a", "192k",
+        "-shortest",
+        "-pix_fmt", "yuv420p",
+        "-vf", "scale=1080:1080",
+        str(video_path),
+    ]
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    if result.returncode != 0:
+        raise RuntimeError(f"ffmpeg failed: {result.stderr}")
+    print(f"Reel video created: {video_path}")
+    return video_path
+
+
+# ── 5. Upload to Cloudinary ───────────────────────────────────────────────────
+
+def upload_to_cloudinary(file_path: Path, resource_type: str = "image") -> str:
     import cloudinary
     import cloudinary.uploader
     cloudinary.config(
@@ -154,12 +179,13 @@ def upload_to_cloudinary(image_path: Path) -> str:
         api_secret=CLOUDINARY_API_SECRET,
     )
     result = cloudinary.uploader.upload(
-        str(image_path),
+        str(file_path),
         folder="wisdom_daily",
+        resource_type=resource_type,
         overwrite=True,
     )
     url = result["secure_url"]
-    print(f"Image uploaded to Cloudinary: {url}")
+    print(f"Uploaded to Cloudinary ({resource_type}): {url}")
     return url
 
 
@@ -178,13 +204,13 @@ def get_page_token() -> str:
     return pages[0]["access_token"]
 
 
-def post_to_instagram(image_path: Path, quote_data: dict) -> str:
+def post_to_instagram(video_path: Path, quote_data: dict) -> str:
     if not INSTAGRAM_ACCESS_TOKEN or not INSTAGRAM_ACCOUNT_ID:
         print("Instagram credentials not set, skipping.")
         return ""
 
     page_token = get_page_token()
-    image_url = upload_to_cloudinary(image_path)
+    video_url = upload_to_cloudinary(video_path, resource_type="video")
     caption = (
         f'"{quote_data["quote"]}"\n\n'
         f"— {quote_data['source']}\n\n"
@@ -193,21 +219,43 @@ def post_to_instagram(image_path: Path, quote_data: dict) -> str:
         f"#Spirituality #AshtavakraGita #Advaita #SacredTexts #Consciousness"
     )
 
+    # Post as Reel (video with audio)
     container_res = requests.post(
         f"https://graph.facebook.com/v19.0/{INSTAGRAM_ACCOUNT_ID}/media",
-        data={"image_url": image_url, "caption": caption, "access_token": page_token},
+        data={
+            "video_url": video_url,
+            "media_type": "REELS",
+            "caption": caption,
+            "access_token": page_token,
+        },
     )
     if not container_res.ok:
         print("Instagram API error:", container_res.json())
     container_res.raise_for_status()
+    container_id = container_res.json()["id"]
+
+    # Reels need processing time — poll until ready
+    import time
+    for _ in range(12):
+        status_res = requests.get(
+            f"https://graph.facebook.com/v19.0/{container_id}",
+            params={"fields": "status_code", "access_token": page_token},
+        )
+        status = status_res.json().get("status_code")
+        print(f"Reel status: {status}")
+        if status == "FINISHED":
+            break
+        time.sleep(10)
 
     publish_res = requests.post(
         f"https://graph.facebook.com/v19.0/{INSTAGRAM_ACCOUNT_ID}/media_publish",
-        data={"creation_id": container_res.json()["id"], "access_token": page_token},
+        data={"creation_id": container_id, "access_token": page_token},
     )
+    if not publish_res.ok:
+        print("Publish error:", publish_res.json())
     publish_res.raise_for_status()
     post_id = publish_res.json()["id"]
-    print(f"Posted to Instagram: {post_id}")
+    print(f"Posted Reel to Instagram: {post_id}")
     return post_id
 
 
@@ -263,8 +311,9 @@ def run():
     audio_path = generate_audio(quote_data)
     bg_bytes = generate_background_image()
     image_path = compose_image(quote_data, bg_bytes)
+    video_path = create_reel_video(image_path, audio_path)
 
-    post_to_instagram(image_path, quote_data)
+    post_to_instagram(video_path, quote_data)
     try:
         post_to_twitter(image_path, quote_data)
     except Exception as e:
