@@ -135,12 +135,17 @@ def compose_image(quote_data: dict, bg_bytes: bytes) -> Path:
     draw = ImageDraw.Draw(bg)
     width, height = bg.size
 
-    try:
-        font_quote = ImageFont.truetype("/System/Library/Fonts/Helvetica.ttc", 44)
-        font_source = ImageFont.truetype("/System/Library/Fonts/Helvetica.ttc", 30)
-    except Exception:
-        font_quote = ImageFont.load_default()
-        font_source = font_quote
+    font_paths = [
+        "/System/Library/Fonts/Helvetica.ttc",          # macOS
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",  # Linux
+        "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
+    ]
+    font_quote = font_source = ImageFont.load_default()
+    for fp in font_paths:
+        if Path(fp).exists():
+            font_quote = ImageFont.truetype(fp, 44)
+            font_source = ImageFont.truetype(fp, 30)
+            break
 
     wrapped = textwrap.fill(f'"{quote_data["quote"]}"', width=30)
     draw.multiline_text(
