@@ -33,11 +33,33 @@ TWITTER_ACCESS_SECRET = os.getenv("TWITTER_ACCESS_SECRET")
 
 OUTPUT_DIR = Path(__file__).parent / "output"
 OUTPUT_DIR.mkdir(exist_ok=True)
+USED_QUOTES_FILE = Path(__file__).parent / "used_quotes.json"
+
+
+def load_used_quotes() -> list[str]:
+    import json
+    if USED_QUOTES_FILE.exists():
+        return json.loads(USED_QUOTES_FILE.read_text())
+    return []
+
+
+def save_used_quote(quote: str):
+    import json
+    used = load_used_quotes()
+    used.append(quote)
+    used = used[-60:]  # keep last 60 to avoid very long prompts
+    USED_QUOTES_FILE.write_text(json.dumps(used, indent=2))
 
 
 # ── 1. Generate popular quote via Claude ──────────────────────────────────────
 
 def generate_quote() -> dict:
+    used = load_used_quotes()
+    avoid_section = ""
+    if used:
+        avoid_list = "\n".join(f"- {q}" for q in used[-30:])
+        avoid_section = f"\n\nDo NOT repeat any of these already-used quotes:\n{avoid_list}\n"
+
     response = anthropic_client.messages.create(
         model="claude-sonnet-4-6",
         max_tokens=500,
@@ -49,8 +71,9 @@ def generate_quote() -> dict:
                 "or the Principal Upanishads — pick one of the most POPULAR, widely-known, "
                 "and frequently cited verses or quotes. Choose quotes that are famous, "
                 "deeply meaningful, and commonly referenced by spiritual teachers and scholars. "
-                "Vary the book each day.\n\n"
-                "Format your response exactly as:\n"
+                "Vary the book each day."
+                + avoid_section +
+                "\nFormat your response exactly as:\n"
                 "QUOTE: <the quote in English>\n"
                 "SOURCE: <book name and chapter/verse reference>\n"
                 "REFLECTION: <2 sentences on why this quote resonates universally>"
@@ -314,6 +337,7 @@ def run():
     video_path = create_reel_video(image_path, audio_path)
 
     post_to_instagram(video_path, quote_data)
+    save_used_quote(quote_data["quote"])
     try:
         post_to_twitter(image_path, quote_data)
     except Exception as e:
