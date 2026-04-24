@@ -102,7 +102,7 @@ def generate_audio(quote_data: dict) -> Path:
         voice="onyx",
         input=speech_text,
     )
-    audio_path = OUTPUT_DIR / f"quote_{datetime.now().strftime("%Y-%m-%d_%H")}.mp3"
+    audio_path = OUTPUT_DIR / f"quote_{datetime.now().strftime('%Y-%m-%d_%H')}.mp3"
     response.stream_to_file(str(audio_path))
     print(f"Audio saved: {audio_path}")
     return audio_path
@@ -165,7 +165,7 @@ def compose_image(quote_data: dict, bg_bytes: bytes) -> Path:
         anchor="mm",
     )
 
-    image_path = OUTPUT_DIR / f"quote_{datetime.now().strftime("%Y-%m-%d_%H")}.jpg"
+    image_path = OUTPUT_DIR / f"quote_{datetime.now().strftime('%Y-%m-%d_%H')}.jpg"
     bg.save(str(image_path), "JPEG", quality=92)
     print(f"Image saved: {image_path}")
     return image_path
@@ -175,7 +175,7 @@ def compose_image(quote_data: dict, bg_bytes: bytes) -> Path:
 
 def create_reel_video(image_path: Path, audio_path: Path) -> Path:
     import subprocess
-    video_path = OUTPUT_DIR / f"reel_{datetime.now().strftime("%Y-%m-%d_%H")}.mp4"
+    video_path = OUTPUT_DIR / f"reel_{datetime.now().strftime('%Y-%m-%d_%H')}.mp4"
     cmd = [
         "/opt/homebrew/bin/ffmpeg", "-y",
         "-loop", "1", "-i", str(image_path),
