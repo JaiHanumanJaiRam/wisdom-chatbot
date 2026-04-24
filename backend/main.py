@@ -70,10 +70,15 @@ def retrieve(question: str) -> tuple[str, list[str]]:
 
 @app.post("/chat", response_model=ChatResponse)
 async def chat(req: ChatRequest):
+    import traceback
     if not req.question.strip():
         raise HTTPException(status_code=400, detail="Question cannot be empty.")
 
-    context, sources = retrieve(req.question)
+    try:
+        context, sources = retrieve(req.question)
+    except Exception as e:
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Retrieval error: {e}")
 
     messages = []
     for turn in req.history[-6:]:
@@ -84,12 +89,16 @@ async def chat(req: ChatRequest):
         "content": f"Context from the sacred texts:\n\n{context}\n\nQuestion: {req.question}",
     })
 
-    response = anthropic_client.messages.create(
-        model="claude-sonnet-4-6",
-        max_tokens=1024,
-        system=SYSTEM_PROMPT,
-        messages=messages,
-    )
+    try:
+        response = anthropic_client.messages.create(
+            model="claude-sonnet-4-6",
+            max_tokens=1024,
+            system=SYSTEM_PROMPT,
+            messages=messages,
+        )
+    except Exception as e:
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"LLM error: {e}")
 
     return ChatResponse(
         answer=response.content[0].text,
