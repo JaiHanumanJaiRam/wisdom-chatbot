@@ -149,7 +149,7 @@ def create_reel_video(image_path: Path, audio_path: Path) -> Path:
     import subprocess
     video_path = OUTPUT_DIR / f"reel_{date.today()}.mp4"
     cmd = [
-        "ffmpeg", "-y",
+        "/opt/homebrew/bin/ffmpeg", "-y",
         "-loop", "1", "-i", str(image_path),
         "-i", str(audio_path),
         "-c:v", "libx264",
