@@ -110,11 +110,31 @@ def generate_audio(quote_data: dict) -> Path:
 
 # ── 3. Generate image ─────────────────────────────────────────────────────────
 
+INDIAN_TEMPLES = [
+    "Brihadeeswarar Temple (Big Temple) at sunrise, Thanjavur, Tamil Nadu, India",
+    "Meenakshi Amman Temple with its towering gopurams at golden hour, Madurai, Tamil Nadu, India",
+    "Kashi Vishwanath Temple on the ghats of the Ganges at dawn, Varanasi, India",
+    "Konark Sun Temple stone chariot wheel at sunset, Odisha, India",
+    "Ranakpur Jain Temple white marble pillars with soft light, Rajasthan, India",
+    "Somnath Temple on the Arabian Sea coast at sunrise, Gujarat, India",
+    "Tirupati Balaji Temple (Venkateswara Temple) in the misty Tirumala hills, Andhra Pradesh, India",
+    "Khajuraho temples in golden morning light, Madhya Pradesh, India",
+    "Badami Cave Temples carved into red sandstone cliffs, Karnataka, India",
+    "Mahabodhi Temple surrounded by Bodhi trees at dusk, Bodh Gaya, Bihar, India",
+    "Dwarkadheesh Temple at sunrise by the sea, Dwarka, Gujarat, India",
+    "Virupaksha Temple with its reflection in the Tungabhadra river, Hampi, Karnataka, India",
+    "Shore Temple at dawn with the Bay of Bengal, Mahabalipuram, Tamil Nadu, India",
+    "Kedarnath Temple surrounded by snow-capped Himalayan peaks, Uttarakhand, India",
+    "Ramanathaswamy Temple long corridor with columns, Rameswaram, Tamil Nadu, India",
+]
+
 def generate_background_image() -> bytes:
+    import random
+    temple = random.choice(INDIAN_TEMPLES)
     prompt = (
-        "A serene spiritual background for an Instagram post inspired by Vedanta philosophy. "
-        "Soft golden light, sacred geometry, lotus flowers, ancient Sanskrit motifs. "
-        "Warm amber and saffron tones. No text. Cinematic quality."
+        f"A stunning, photorealistic spiritual background of {temple}. "
+        "Ancient stone architecture, divine warm light, sacred and serene atmosphere. "
+        "No text, no people. Cinematic quality, Instagram-ready."
     )
     response = openai_client.images.generate(
         model="dall-e-3",
