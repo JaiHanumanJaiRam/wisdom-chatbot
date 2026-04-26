@@ -95,16 +95,24 @@ def generate_quote() -> dict:
 
 # ── 2. Generate audio via OpenAI TTS ─────────────────────────────────────────
 
+VOICES = [
+    "shimmer",   # feminine, warm
+    "onyx",      # male, deep
+    "nova",      # American female
+]
+
 def generate_audio(quote_data: dict) -> Path:
+    import random
+    voice = random.choice(VOICES)
     speech_text = f"{quote_data['quote']}. {quote_data['reflection']}"
     response = openai_client.audio.speech.create(
         model="tts-1",
-        voice="shimmer",
+        voice=voice,
         input=speech_text,
     )
     audio_path = OUTPUT_DIR / f"quote_{datetime.now().strftime('%Y-%m-%d_%H')}.mp3"
     response.stream_to_file(str(audio_path))
-    print(f"Audio saved: {audio_path}")
+    print(f"Audio saved: {audio_path} (voice: {voice})")
     return audio_path
 
 
