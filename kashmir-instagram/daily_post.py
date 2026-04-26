@@ -112,7 +112,7 @@ def generate_audio(quote_data: dict) -> Path:
     speech_text = f"{quote_data['quote']}. {quote_data['reflection']}"
     response = openai_client.audio.speech.create(
         model="tts-1",
-        voice="onyx",
+        voice="shimmer",
         input=speech_text,
     )
     audio_path = OUTPUT_DIR / f"quote_{datetime.now().strftime('%Y-%m-%d_%H')}.mp3"
