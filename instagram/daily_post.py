@@ -162,7 +162,10 @@ def _fetch_wikipedia_photo(wiki_title: str) -> bytes | None:
                 img_url = page["thumbnail"]["source"]
                 img_r = requests.get(img_url, headers=_WIKI_HEADERS, timeout=20)
                 img_r.raise_for_status()
-                return img_r.content
+                img_bytes = img_r.content
+                # Validate that PIL can actually open it before returning
+                Image.open(io.BytesIO(img_bytes)).verify()
+                return img_bytes
     except Exception as e:
         print(f"Wikipedia photo fetch failed: {e}")
     return None

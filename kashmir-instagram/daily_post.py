@@ -131,24 +131,72 @@ def generate_audio(quote_data: dict) -> Path:
 
 # ── 3. Generate background image ─────────────────────────────────────────────
 
-KASHMIR_HOLY_PLACES = [
-    "Shankaracharya Temple (Jyeshteshwara Temple) on Gopadri hill overlooking Dal Lake, Srinagar, Kashmir",
-    "Amarnath Cave shrine with ice Shivalinga in the Himalayas, Kashmir",
-    "Martand Sun Temple ruins at golden hour, Anantnag district, Kashmir",
-    "Kheer Bhawani Temple surrounded by spring waters in a Chinar grove, Kashmir",
-    "Sharda Peeth ancient temple ruins on the banks of the Neelum River, Kashmir",
-    "Wular Lake with distant Himalayan peaks at dawn, Kashmir",
-    "Naranag ancient Shiva temple complex in the forest, Kashmir",
-    "Tullamula Kheer Bhawani sacred spring at dusk, Kashmir",
-    "Ancient Pandrethan Shiva temple reflected in the water, Srinagar, Kashmir",
-    "Sufi shrine and Chinar trees beside Dal Lake at twilight, Kashmir",
-]
+# Maps display name → Wikipedia article title (all confirmed to have thumbnail photos)
+KASHMIR_HOLY_PLACES = {
+    "Martand Sun Temple, Kashmir":             "Martand Sun Temple",
+    "Wular Lake, Kashmir":                     "Wular Lake",
+    "Naranag Shiva Temple complex, Kashmir":   "Naranag",
+    "Dal Lake, Srinagar, Kashmir":             "Dal Lake",
+    "Char Chinar island, Dal Lake, Kashmir":   "Char Chinar",
+    "Verinag spring and gardens, Kashmir":     "Verinag",
+    "Achabal Mughal Gardens, Kashmir":         "Achabal Gardens",
+    "Kheer Bhawani Temple, Kashmir":           "Kheer Bhawani Temple",
+    "Manasbal Lake, Kashmir":                  "Manasbal Lake",
+    "Gangabal Lake in the Himalayas, Kashmir": "Gangabal Lake",
+    "Tulian Lake, high-altitude Kashmir":      "Tulian Lake",
+    "Pari Mahal gardens, Srinagar, Kashmir":   "Pari Mahal",
+    "Nishat Bagh Mughal garden, Kashmir":      "Nishat Bagh",
+    "Shalimar Bagh, Srinagar, Kashmir":        "Shalimar Bagh, Srinagar",
+}
+
+_WIKI_HEADERS = {"User-Agent": "DailyKashmiriWisdom/1.0 (instagram @dailykashmiriwisdom)"}
+
+
+def _fetch_wikipedia_photo(wiki_title: str) -> bytes | None:
+    """Fetch the lead photograph for a Wikipedia article. Returns None on failure."""
+    try:
+        r = requests.get(
+            "https://en.wikipedia.org/w/api.php",
+            params={
+                "action": "query",
+                "titles": wiki_title,
+                "prop": "pageimages",
+                "format": "json",
+                "pithumbsize": 1200,
+                "piprop": "thumbnail",
+            },
+            headers=_WIKI_HEADERS,
+            timeout=15,
+        )
+        r.raise_for_status()
+        pages = r.json()["query"]["pages"]
+        for page in pages.values():
+            if "thumbnail" in page:
+                img_url = page["thumbnail"]["source"]
+                img_r = requests.get(img_url, headers=_WIKI_HEADERS, timeout=20)
+                img_r.raise_for_status()
+                img_bytes = img_r.content
+                # Validate that PIL can actually open it before returning
+                Image.open(io.BytesIO(img_bytes)).verify()
+                return img_bytes
+    except Exception as e:
+        print(f"Wikipedia photo fetch failed: {e}")
+    return None
+
 
 def generate_background_image() -> bytes:
     import random
-    place = random.choice(KASHMIR_HOLY_PLACES)
+    display_name, wiki_title = random.choice(list(KASHMIR_HOLY_PLACES.items()))
+
+    img_bytes = _fetch_wikipedia_photo(wiki_title)
+    if img_bytes:
+        print(f"Background photo: {display_name} (real Wikipedia photograph)")
+        return img_bytes
+
+    # Fallback: DALL-E if Wikipedia fetch fails
+    print(f"Falling back to DALL-E for: {display_name}")
     prompt = (
-        f"A stunning, photorealistic spiritual background of {place}. "
+        f"A stunning, photorealistic spiritual background of {display_name}. "
         "Ancient stone architecture, misty Himalayan atmosphere, soft divine light, "
         "sacred and serene mood. No text, no people. Cinematic quality, Instagram-ready."
     )
