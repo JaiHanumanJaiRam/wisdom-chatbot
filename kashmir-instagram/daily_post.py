@@ -193,12 +193,15 @@ def compose_image(quote_data: dict, bg_bytes: bytes) -> Path:
         anchor="mm",
         spacing=14,
     )
-    draw.text(
-        (width // 2, height - 130),
-        f"— {quote_data['source']}",
+    wrapped_source = textwrap.fill(f"— {quote_data['source']}", width=45)
+    draw.multiline_text(
+        (width // 2, height - 150),
+        wrapped_source,
         font=font_source,
         fill=(180, 200, 240),
+        align="center",
         anchor="mm",
+        spacing=10,
     )
 
     image_path = OUTPUT_DIR / f"quote_{datetime.now().strftime('%Y-%m-%d_%H')}.jpg"

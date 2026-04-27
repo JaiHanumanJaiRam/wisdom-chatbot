@@ -118,29 +118,69 @@ def generate_audio(quote_data: dict) -> Path:
 
 # ── 3. Generate image ─────────────────────────────────────────────────────────
 
-INDIAN_TEMPLES = [
-    "Brihadeeswarar Temple (Big Temple) at sunrise, Thanjavur, Tamil Nadu, India",
-    "Meenakshi Amman Temple with its towering gopurams at golden hour, Madurai, Tamil Nadu, India",
-    "Kashi Vishwanath Temple on the ghats of the Ganges at dawn, Varanasi, India",
-    "Konark Sun Temple stone chariot wheel at sunset, Odisha, India",
-    "Ranakpur Jain Temple white marble pillars with soft light, Rajasthan, India",
-    "Somnath Temple on the Arabian Sea coast at sunrise, Gujarat, India",
-    "Tirupati Balaji Temple (Venkateswara Temple) in the misty Tirumala hills, Andhra Pradesh, India",
-    "Khajuraho temples in golden morning light, Madhya Pradesh, India",
-    "Badami Cave Temples carved into red sandstone cliffs, Karnataka, India",
-    "Mahabodhi Temple surrounded by Bodhi trees at dusk, Bodh Gaya, Bihar, India",
-    "Dwarkadheesh Temple at sunrise by the sea, Dwarka, Gujarat, India",
-    "Virupaksha Temple with its reflection in the Tungabhadra river, Hampi, Karnataka, India",
-    "Shore Temple at dawn with the Bay of Bengal, Mahabalipuram, Tamil Nadu, India",
-    "Kedarnath Temple surrounded by snow-capped Himalayan peaks, Uttarakhand, India",
-    "Ramanathaswamy Temple long corridor with columns, Rameswaram, Tamil Nadu, India",
-]
+# Maps display name → Wikipedia article title (all confirmed to have thumbnail photos)
+INDIAN_TEMPLES = {
+    "Meenakshi Amman Temple, Madurai":         "Meenakshi Temple",
+    "Kashi Vishwanath Temple, Varanasi":       "Kashi Vishwanath Temple",
+    "Konark Sun Temple, Odisha":               "Konark Sun Temple",
+    "Ranakpur Jain Temple, Rajasthan":         "Ranakpur Jain temple",
+    "Somnath Temple, Gujarat":                 "Somnath Temple",
+    "Venkateswara Temple, Tirumala":           "Venkateswara Temple, Tirumala",
+    "Khajuraho Group of Monuments":            "Khajuraho Group of Monuments",
+    "Badami Cave Temples, Karnataka":          "Badami cave temples",
+    "Mahabodhi Temple, Bodh Gaya":             "Mahabodhi Temple",
+    "Dwarkadhish Temple, Dwarka":              "Dwarkadhish Temple",
+    "Virupaksha Temple, Hampi":                "Virupaksha Temple, Hampi",
+    "Shore Temple, Mahabalipuram":             "Shore Temple",
+    "Kedarnath Temple, Uttarakhand":           "Kedarnath",
+    "Ramanathaswamy Temple, Rameswaram":       "Ramanathaswamy Temple",
+}
+
+_WIKI_HEADERS = {"User-Agent": "DailyHinduWisdom/1.0 (instagram @dailyhinduwisdom)"}
+
+
+def _fetch_wikipedia_photo(wiki_title: str) -> bytes | None:
+    """Fetch the lead photograph for a Wikipedia article. Returns None on failure."""
+    try:
+        r = requests.get(
+            "https://en.wikipedia.org/w/api.php",
+            params={
+                "action": "query",
+                "titles": wiki_title,
+                "prop": "pageimages",
+                "format": "json",
+                "pithumbsize": 1200,
+                "piprop": "thumbnail",
+            },
+            headers=_WIKI_HEADERS,
+            timeout=15,
+        )
+        r.raise_for_status()
+        pages = r.json()["query"]["pages"]
+        for page in pages.values():
+            if "thumbnail" in page:
+                img_url = page["thumbnail"]["source"]
+                img_r = requests.get(img_url, headers=_WIKI_HEADERS, timeout=20)
+                img_r.raise_for_status()
+                return img_r.content
+    except Exception as e:
+        print(f"Wikipedia photo fetch failed: {e}")
+    return None
+
 
 def generate_background_image() -> bytes:
     import random
-    temple = random.choice(INDIAN_TEMPLES)
+    display_name, wiki_title = random.choice(list(INDIAN_TEMPLES.items()))
+
+    img_bytes = _fetch_wikipedia_photo(wiki_title)
+    if img_bytes:
+        print(f"Background photo: {display_name} (real Wikipedia photograph)")
+        return img_bytes
+
+    # Fallback: DALL-E if Wikipedia fetch fails
+    print(f"Falling back to DALL-E for: {display_name}")
     prompt = (
-        f"A stunning, photorealistic spiritual background of {temple}. "
+        f"A stunning, photorealistic spiritual background of {display_name}. "
         "Ancient stone architecture, divine warm light, sacred and serene atmosphere. "
         "No text, no people. Cinematic quality, Instagram-ready."
     )
@@ -185,12 +225,15 @@ def compose_image(quote_data: dict, bg_bytes: bytes) -> Path:
         anchor="mm",
         spacing=14,
     )
-    draw.text(
-        (width // 2, height - 130),
-        f"— {quote_data['source']}",
+    wrapped_source = textwrap.fill(f"— {quote_data['source']}", width=45)
+    draw.multiline_text(
+        (width // 2, height - 150),
+        wrapped_source,
         font=font_source,
         fill=(210, 200, 170),
+        align="center",
         anchor="mm",
+        spacing=10,
     )
 
     image_path = OUTPUT_DIR / f"quote_{datetime.now().strftime('%Y-%m-%d_%H')}.jpg"
