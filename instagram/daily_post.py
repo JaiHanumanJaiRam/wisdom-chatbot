@@ -139,7 +139,7 @@ INDIAN_TEMPLES = {
 _WIKI_HEADERS = {"User-Agent": "DailyHinduWisdom/1.0 (instagram @dailyhinduwisdom)"}
 
 
-def _fetch_wikipedia_photo(wiki_title: str) -> bytes | None:
+def _fetch_wikipedia_photo(wiki_title: str):
     """Fetch the lead photograph for a Wikipedia article. Returns None on failure."""
     try:
         r = requests.get(

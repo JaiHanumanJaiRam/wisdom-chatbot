@@ -152,7 +152,7 @@ KASHMIR_HOLY_PLACES = {
 _WIKI_HEADERS = {"User-Agent": "DailyKashmiriWisdom/1.0 (instagram @dailykashmiriwisdom)"}
 
 
-def _fetch_wikipedia_photo(wiki_title: str) -> bytes | None:
+def _fetch_wikipedia_photo(wiki_title: str):
     """Fetch the lead photograph for a Wikipedia article. Returns None on failure."""
     try:
         r = requests.get(
