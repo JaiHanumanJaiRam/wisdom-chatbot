@@ -33,7 +33,9 @@ TWITTER_ACCESS_SECRET = os.getenv("TWITTER_ACCESS_SECRET")
 
 OUTPUT_DIR = Path(__file__).parent / "output"
 OUTPUT_DIR.mkdir(exist_ok=True)
-USED_QUOTES_FILE = Path(__file__).parent / "used_quotes.json"
+USED_QUOTES_FILE  = Path(__file__).parent / "used_quotes.json"
+LAST_POSTED_FILE  = Path(__file__).parent / "last_posted.json"
+MIN_POST_INTERVAL = 4 * 60 * 60   # 4 hours in seconds
 
 
 def load_used_quotes() -> list[str]:
@@ -49,6 +51,30 @@ def save_used_quote(quote: str):
     used.append(quote)
     used = used[-60:]  # keep last 60 to avoid very long prompts
     USED_QUOTES_FILE.write_text(json.dumps(used, indent=2))
+
+
+def already_posted_recently() -> bool:
+    """Return True if a post was successfully published within the last 4 hours."""
+    import json, time
+    if not LAST_POSTED_FILE.exists():
+        return False
+    try:
+        data = json.loads(LAST_POSTED_FILE.read_text())
+        last_ts = data.get("timestamp", 0)
+        elapsed = time.time() - last_ts
+        if elapsed < MIN_POST_INTERVAL:
+            print(f"Skipping — last post was {elapsed/3600:.1f}h ago (min interval: 4h).")
+            return True
+    except Exception:
+        pass
+    return False
+
+
+def record_post():
+    """Persist the current timestamp as the last successful post time."""
+    import json, time
+    LAST_POSTED_FILE.write_text(json.dumps({"timestamp": time.time(),
+                                             "datetime": datetime.now().isoformat()}, indent=2))
 
 
 # ── 1. Generate popular quote via Claude ──────────────────────────────────────
@@ -404,6 +430,9 @@ def post_to_twitter(image_path: Path, quote_data: dict) -> str:
 # ── Main ──────────────────────────────────────────────────────────────────────
 
 def run():
+    if already_posted_recently():
+        return
+
     print(f"Generating wisdom post for {datetime.now().strftime('%Y-%m-%d %H:%M')}...")
 
     quote_data = generate_quote()
@@ -417,6 +446,7 @@ def run():
 
     post_to_instagram(video_path, quote_data)
     save_used_quote(quote_data["quote"])
+    record_post()
     try:
         post_to_twitter(image_path, quote_data)
     except Exception as e:
