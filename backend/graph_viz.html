@@ -213,6 +213,11 @@
   Click node to explore · Search to highlight
 </div>
 
+<div id="loading" style="position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1rem;z-index:50;background:#080c14;">
+  <div style="font-size:2rem;">🕉</div>
+  <div style="font-family:'Courier New',monospace;font-size:0.75rem;letter-spacing:0.12em;color:#f5c842;">LOADING KNOWLEDGE GRAPH</div>
+  <div style="font-family:'Courier New',monospace;font-size:0.62rem;color:rgba(232,224,208,0.4);">Server may need ~30s to wake from sleep…</div>
+</div>
 <svg id="graph"></svg>
 
 <script>
@@ -244,9 +249,18 @@ svg.on("click", () => clearSelection());
 let allNodes = [], allLinks = [], simulation;
 let selectedId = null;
 
-fetch("/graph/data?top=140")
+fetch("/graph/data?top=140", { signal: AbortSignal.timeout(60000) })
   .then(r => r.json())
-  .then(build);
+  .then(data => {
+    document.getElementById("loading").style.display = "none";
+    build(data);
+  })
+  .catch(err => {
+    document.getElementById("loading").innerHTML =
+      '<div style="font-size:1.5rem;">⚠️</div>' +
+      '<div style="font-family:\'Courier New\',monospace;font-size:0.75rem;letter-spacing:0.12em;color:#f47c6a;">COULD NOT LOAD GRAPH</div>' +
+      '<div style="font-family:\'Courier New\',monospace;font-size:0.62rem;color:rgba(232,224,208,0.4);">Try refreshing in a moment.</div>';
+  });
 
 function nodeColor(d) { return COLOR[d.type] || DEFAULT_COLOR; }
 function nodeRadius(d) { return Math.max(5, Math.min(28, 4 + Math.sqrt(d.degree) * 1.7)); }
