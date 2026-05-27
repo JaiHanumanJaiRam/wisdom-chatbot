@@ -5,6 +5,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse, HTMLResponse
 from pydantic import BaseModel
 from pinecone import Pinecone
 import anthropic
@@ -364,6 +365,51 @@ async def chat(req: ChatRequest):
         answer=response.content[0].text,
         sources=sources,
     )
+
+
+# ── Knowledge graph visualisation ────────────────────────────────────────────
+
+@app.get("/graph")
+async def graph_viz():
+    html_file = Path(__file__).parent / "graph_viz.html"
+    if html_file.exists():
+        return FileResponse(str(html_file), media_type="text/html")
+    return HTMLResponse("<h1>graph_viz.html not found</h1>", status_code=404)
+
+
+@app.get("/graph/data")
+async def graph_data(top: int = 140):
+    """Return the top N nodes (by degree) and all edges between them."""
+    if knowledge_graph.number_of_nodes() == 0:
+        return {"nodes": [], "links": []}
+
+    degrees   = dict(knowledge_graph.degree())
+    top_nodes = sorted(degrees, key=lambda n: degrees[n], reverse=True)[:top]
+    top_set   = set(top_nodes)
+
+    nodes = [
+        {
+            "id":     n,
+            "type":   knowledge_graph.nodes[n].get("type", "Concept"),
+            "degree": degrees[n],
+        }
+        for n in top_nodes
+    ]
+
+    seen  = set()
+    links = []
+    for u, v, data in knowledge_graph.edges(data=True):
+        if u in top_set and v in top_set:
+            key = (u, v)
+            if key not in seen:
+                seen.add(key)
+                links.append({
+                    "source":    u,
+                    "target":    v,
+                    "predicate": data.get("predicate", "related_to"),
+                })
+
+    return {"nodes": nodes, "links": links}
 
 
 # ── Health check ──────────────────────────────────────────────────────────────

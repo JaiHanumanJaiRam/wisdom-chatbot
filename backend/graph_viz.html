@@ -1,0 +1,440 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Hindu Wisdom — Knowledge Graph</title>
+  <script src="https://d3js.org/d3.v7.min.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: #080c14;
+      color: #e8e0d0;
+      font-family: 'Georgia', serif;
+      overflow: hidden;
+      height: 100vh;
+      width: 100vw;
+    }
+
+    /* ── Header ── */
+    #header {
+      position: fixed;
+      top: 0; left: 0; right: 0;
+      z-index: 20;
+      display: flex;
+      align-items: center;
+      gap: 2rem;
+      padding: 0.9rem 1.6rem;
+      background: rgba(8,12,20,0.88);
+      backdrop-filter: blur(10px);
+      border-bottom: 1px solid rgba(245,200,66,0.15);
+    }
+    #header h1 {
+      font-size: 1rem;
+      font-weight: normal;
+      letter-spacing: 0.06em;
+      color: #f5c842;
+      white-space: nowrap;
+    }
+    #header .stats {
+      font-size: 0.7rem;
+      color: rgba(232,224,208,0.45);
+      font-family: 'Courier New', monospace;
+      letter-spacing: 0.04em;
+      white-space: nowrap;
+    }
+    #search {
+      margin-left: auto;
+      background: rgba(255,255,255,0.06);
+      border: 1px solid rgba(245,200,66,0.25);
+      border-radius: 3px;
+      color: #e8e0d0;
+      font-size: 0.78rem;
+      padding: 0.4rem 0.8rem;
+      width: 200px;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+    #search::placeholder { color: rgba(232,224,208,0.3); }
+    #search:focus { border-color: rgba(245,200,66,0.6); }
+
+    /* ── Legend ── */
+    #legend {
+      position: fixed;
+      bottom: 1.2rem;
+      left: 1.4rem;
+      z-index: 20;
+      display: flex;
+      flex-direction: column;
+      gap: 0.45rem;
+      background: rgba(8,12,20,0.78);
+      backdrop-filter: blur(8px);
+      border: 1px solid rgba(255,255,255,0.07);
+      border-radius: 4px;
+      padding: 0.8rem 1rem;
+    }
+    .legend-item {
+      display: flex;
+      align-items: center;
+      gap: 0.55rem;
+      font-size: 0.68rem;
+      font-family: 'Courier New', monospace;
+      letter-spacing: 0.06em;
+      color: rgba(232,224,208,0.7);
+    }
+    .legend-dot {
+      width: 10px; height: 10px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+
+    /* ── Info panel (right side on click) ── */
+    #info {
+      position: fixed;
+      top: 3.5rem; right: 1.2rem;
+      z-index: 20;
+      width: 240px;
+      background: rgba(8,12,20,0.88);
+      backdrop-filter: blur(10px);
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 4px;
+      padding: 1rem 1.1rem;
+      display: none;
+    }
+    #info .info-name {
+      font-size: 1rem;
+      color: #f5c842;
+      margin-bottom: 0.3rem;
+      word-break: break-word;
+    }
+    #info .info-type {
+      font-family: 'Courier New', monospace;
+      font-size: 0.62rem;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: rgba(232,224,208,0.45);
+      margin-bottom: 0.7rem;
+    }
+    #info .info-section {
+      font-size: 0.62rem;
+      font-family: 'Courier New', monospace;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: rgba(245,200,66,0.6);
+      margin: 0.6rem 0 0.3rem;
+    }
+    #info .info-rel {
+      font-size: 0.71rem;
+      color: rgba(232,224,208,0.65);
+      line-height: 1.7;
+      word-break: break-word;
+    }
+    #info .close-btn {
+      position: absolute;
+      top: 0.5rem; right: 0.7rem;
+      background: none;
+      border: none;
+      color: rgba(232,224,208,0.35);
+      cursor: pointer;
+      font-size: 1rem;
+      line-height: 1;
+    }
+    #info .close-btn:hover { color: #f5c842; }
+
+    /* ── Hint ── */
+    #hint {
+      position: fixed;
+      bottom: 1.2rem; right: 1.4rem;
+      z-index: 20;
+      font-size: 0.62rem;
+      font-family: 'Courier New', monospace;
+      color: rgba(232,224,208,0.25);
+      letter-spacing: 0.06em;
+      text-align: right;
+      line-height: 1.8;
+    }
+
+    /* ── SVG elements ── */
+    .node circle {
+      cursor: pointer;
+      transition: filter 0.15s;
+    }
+    .node:hover circle {
+      filter: brightness(1.35);
+    }
+    .node text {
+      pointer-events: none;
+      user-select: none;
+    }
+    .link {
+      stroke-opacity: 0.28;
+      transition: stroke-opacity 0.2s;
+    }
+    .link.highlighted { stroke-opacity: 0.85; }
+    .link.dimmed       { stroke-opacity: 0.04; }
+
+    .node.dimmed circle  { opacity: 0.15; }
+    .node.dimmed text    { opacity: 0.08; }
+    .node.highlighted circle { filter: brightness(1.4) drop-shadow(0 0 6px currentColor); }
+  </style>
+</head>
+<body>
+
+<!-- Header -->
+<div id="header">
+  <h1>🕉 Hindu Wisdom · Knowledge Graph</h1>
+  <span class="stats" id="stats-label">Loading…</span>
+  <input id="search" type="text" placeholder="Search concept…" autocomplete="off" />
+</div>
+
+<!-- Legend -->
+<div id="legend">
+  <div class="legend-item"><div class="legend-dot" style="background:#f5c842"></div>Concept</div>
+  <div class="legend-item"><div class="legend-dot" style="background:#4ecdc4"></div>Person</div>
+  <div class="legend-item"><div class="legend-dot" style="background:#b57bee"></div>Book</div>
+  <div class="legend-item"><div class="legend-dot" style="background:#f47c6a"></div>Tradition</div>
+</div>
+
+<!-- Info panel -->
+<div id="info">
+  <button class="close-btn" onclick="clearSelection()">✕</button>
+  <div class="info-name" id="info-name"></div>
+  <div class="info-type" id="info-type"></div>
+  <div class="info-section">Outgoing</div>
+  <div class="info-rel" id="info-out"></div>
+  <div class="info-section">Incoming</div>
+  <div class="info-rel" id="info-in"></div>
+</div>
+
+<!-- Hint -->
+<div id="hint">
+  Scroll to zoom · Drag to pan<br>
+  Click node to explore · Search to highlight
+</div>
+
+<svg id="graph"></svg>
+
+<script>
+const COLOR = {
+  Concept:   "#f5c842",
+  Person:    "#4ecdc4",
+  Book:      "#b57bee",
+  Tradition: "#f47c6a",
+};
+const DEFAULT_COLOR = "#8899aa";
+
+const svg   = d3.select("#graph");
+const W     = window.innerWidth;
+const H     = window.innerHeight;
+svg.attr("width", W).attr("height", H);
+
+const g = svg.append("g");  // zoomable group
+
+// Zoom / pan
+svg.call(
+  d3.zoom()
+    .scaleExtent([0.15, 6])
+    .on("zoom", e => g.attr("transform", e.transform))
+);
+
+// Click on background clears selection
+svg.on("click", () => clearSelection());
+
+let allNodes = [], allLinks = [], simulation;
+let selectedId = null;
+
+fetch("/graph/data?top=140")
+  .then(r => r.json())
+  .then(build);
+
+function nodeColor(d) { return COLOR[d.type] || DEFAULT_COLOR; }
+function nodeRadius(d) { return Math.max(5, Math.min(28, 4 + Math.sqrt(d.degree) * 1.7)); }
+
+function build(data) {
+  allNodes = data.nodes;
+  allLinks = data.links;
+
+  document.getElementById("stats-label").textContent =
+    `Showing top ${allNodes.length} of 5,972 nodes · ${allLinks.length} relationships`;
+
+  // Arrow markers for each type
+  const defs = svg.append("defs");
+  Object.entries(COLOR).forEach(([type, color]) => {
+    defs.append("marker")
+      .attr("id", `arrow-${type}`)
+      .attr("viewBox", "0 -4 8 8")
+      .attr("refX", 14)
+      .attr("refY", 0)
+      .attr("markerWidth", 5)
+      .attr("markerHeight", 5)
+      .attr("orient", "auto")
+      .append("path")
+      .attr("d", "M0,-4L8,0L0,4")
+      .attr("fill", color)
+      .attr("opacity", 0.55);
+  });
+  defs.append("marker")
+    .attr("id", "arrow-default")
+    .attr("viewBox", "0 -4 8 8")
+    .attr("refX", 14).attr("refY", 0)
+    .attr("markerWidth", 5).attr("markerHeight", 5)
+    .attr("orient", "auto")
+    .append("path").attr("d", "M0,-4L8,0L0,4")
+    .attr("fill", DEFAULT_COLOR).attr("opacity", 0.4);
+
+  // Links
+  const linkSel = g.append("g").attr("class", "links")
+    .selectAll("line")
+    .data(allLinks)
+    .join("line")
+    .attr("class", "link")
+    .attr("stroke", d => {
+      const src = allNodes.find(n => n.id === (d.source.id || d.source));
+      return src ? nodeColor(src) : DEFAULT_COLOR;
+    })
+    .attr("stroke-width", 1)
+    .attr("marker-end", d => {
+      const src = allNodes.find(n => n.id === (d.source.id || d.source));
+      const type = src ? src.type : null;
+      return `url(#arrow-${type || "default"})`;
+    });
+
+  // Nodes
+  const nodeSel = g.append("g").attr("class", "nodes")
+    .selectAll("g")
+    .data(allNodes)
+    .join("g")
+    .attr("class", "node")
+    .call(
+      d3.drag()
+        .on("start", dragStart)
+        .on("drag",  dragged)
+        .on("end",   dragEnd)
+    )
+    .on("click", (event, d) => { event.stopPropagation(); selectNode(d); });
+
+  nodeSel.append("circle")
+    .attr("r", nodeRadius)
+    .attr("fill", nodeColor)
+    .attr("fill-opacity", 0.88)
+    .attr("stroke", d => d3.color(nodeColor(d)).brighter(0.8))
+    .attr("stroke-width", 1);
+
+  // Labels: always visible for high-degree nodes, rest on hover via CSS is complex, just show all for top nodes
+  nodeSel.append("text")
+    .attr("dy", d => -nodeRadius(d) - 3)
+    .attr("text-anchor", "middle")
+    .attr("font-family", "Courier New, monospace")
+    .attr("font-size", d => d.degree > 50 ? "10px" : d.degree > 20 ? "8.5px" : "7px")
+    .attr("fill", d => d.degree > 20 ? nodeColor(d) : "rgba(232,224,208,0.45)")
+    .attr("paint-order", "stroke")
+    .attr("stroke", "#080c14")
+    .attr("stroke-width", 3)
+    .attr("stroke-linejoin", "round")
+    .text(d => d.id);
+
+  // Force simulation
+  simulation = d3.forceSimulation(allNodes)
+    .force("link",   d3.forceLink(allLinks).id(d => d.id).distance(70).strength(0.4))
+    .force("charge", d3.forceManyBody().strength(-220))
+    .force("center", d3.forceCenter(W / 2, H / 2))
+    .force("collide", d3.forceCollide(d => nodeRadius(d) + 8))
+    .on("tick", () => {
+      linkSel
+        .attr("x1", d => d.source.x)
+        .attr("y1", d => d.source.y)
+        .attr("x2", d => d.target.x)
+        .attr("y2", d => d.target.y);
+      nodeSel.attr("transform", d => `translate(${d.x},${d.y})`);
+    });
+
+  // Expose for search
+  window._nodeSel  = nodeSel;
+  window._linkSel  = linkSel;
+  window._allLinks = allLinks;
+  window._allNodes = allNodes;
+}
+
+// ── Selection ──────────────────────────────────────────────────────────────
+
+function selectNode(d) {
+  selectedId = d.id;
+
+  const neighborIds = new Set([d.id]);
+  const connectedLinks = allLinks.filter(l => {
+    const s = l.source.id || l.source;
+    const t = l.target.id || l.target;
+    if (s === d.id || t === d.id) { neighborIds.add(s); neighborIds.add(t); return true; }
+    return false;
+  });
+
+  window._nodeSel.classed("highlighted", n => n.id === d.id)
+                 .classed("dimmed",      n => !neighborIds.has(n.id));
+  window._linkSel.classed("highlighted", l => {
+    const s = l.source.id || l.source; const t = l.target.id || l.target;
+    return s === d.id || t === d.id;
+  }).classed("dimmed", l => {
+    const s = l.source.id || l.source; const t = l.target.id || l.target;
+    return !(s === d.id || t === d.id);
+  });
+
+  // Info panel
+  const outRels = allLinks
+    .filter(l => (l.source.id || l.source) === d.id)
+    .slice(0, 8)
+    .map(l => `→ ${l.predicate.replace(/_/g," ")} → <b style="color:#f5c842">${l.target.id || l.target}</b>`)
+    .join("<br>");
+  const inRels = allLinks
+    .filter(l => (l.target.id || l.target) === d.id)
+    .slice(0, 8)
+    .map(l => `<b style="color:#f5c842">${l.source.id || l.source}</b> → ${l.predicate.replace(/_/g," ")} →`)
+    .join("<br>");
+
+  document.getElementById("info-name").textContent = d.id;
+  document.getElementById("info-type").textContent = `${d.type}  ·  degree ${d.degree}`;
+  document.getElementById("info-out").innerHTML  = outRels  || "<i style='opacity:0.4'>none</i>";
+  document.getElementById("info-in").innerHTML   = inRels   || "<i style='opacity:0.4'>none</i>";
+  document.getElementById("info").style.display = "block";
+}
+
+function clearSelection() {
+  selectedId = null;
+  if (!window._nodeSel) return;
+  window._nodeSel.classed("highlighted", false).classed("dimmed", false);
+  window._linkSel.classed("highlighted", false).classed("dimmed", false);
+  document.getElementById("info").style.display = "none";
+}
+
+// ── Search ─────────────────────────────────────────────────────────────────
+
+document.getElementById("search").addEventListener("input", function () {
+  const q = this.value.trim().toLowerCase();
+  if (!window._nodeSel) return;
+  if (!q) { clearSelection(); return; }
+  const match = allNodes.find(n => n.id.includes(q));
+  if (match) selectNode(match);
+});
+
+// ── Drag ───────────────────────────────────────────────────────────────────
+
+function dragStart(event, d) {
+  if (!event.active) simulation.alphaTarget(0.3).restart();
+  d.fx = d.x; d.fy = d.y;
+}
+function dragged(event, d) { d.fx = event.x; d.fy = event.y; }
+function dragEnd(event, d) {
+  if (!event.active) simulation.alphaTarget(0);
+  d.fx = null; d.fy = null;
+}
+
+// ── Resize ─────────────────────────────────────────────────────────────────
+
+window.addEventListener("resize", () => {
+  const w = window.innerWidth, h = window.innerHeight;
+  svg.attr("width", w).attr("height", h);
+  if (simulation) simulation.force("center", d3.forceCenter(w / 2, h / 2)).alpha(0.1).restart();
+});
+</script>
+</body>
+</html>
